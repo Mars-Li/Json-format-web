@@ -743,6 +743,7 @@
                       spellcheck="false"
                       oninput="onEditorInput()"
                       onscroll="syncLineNumbers()"
+                      onpaste="isPasting=true"
                       placeholder="在此输入 JSON 文本..."></textarea>
             <!-- CodeMirror 增强容器（初始隐藏） -->
             <div class="cm-container hidden" id="cmContainer"></div>
@@ -838,7 +839,10 @@
     function onEditorInput() {
         errorLine = -1;
         updateLineNumbers();
-        scheduleAutoFormat();
+        if (isPasting) {
+            isPasting = false;
+            scheduleAutoFormat();
+        }
         scheduleHistoryRecord();
     }
 
@@ -932,6 +936,7 @@
      * ============================================================ */
     var autoFormatTimer = null;      // 防抖定时器
     var lastAutoRendered = '';       // 最近一次已自动渲染的左侧文本（避免重复重建）
+    var isPasting = false;           // 粘贴标记：仅在粘贴时自动格式化，键盘输入不触发
 
     function scheduleAutoFormat() {
         clearTimeout(autoFormatTimer);
@@ -1020,13 +1025,13 @@
         setStatus('warning', '⚠️ 未检测到合法的 JSON 片段');
     }
 
-    // 统一出口：渲染右侧树。isWhole=true 表示整段输入即 JSON，手动格式化时才回填左侧；
+    // 统一出口：渲染右侧树。isWhole=true 表示整段输入即 JSON；
     // 提取片段时（isWhole=false）绝不覆盖左侧日志原文，避免丢失用户粘贴的上下文
     function applyJsonResult(obj, onlyRender, isWhole) {
         var formatted = JSON.stringify(obj, null, 2);
         currentFormattedJson = formatted;
         errorLine = -1;
-        var needOverwrite = isWhole && !onlyRender;
+        var needOverwrite = isWhole;
         if (needOverwrite) {
             setEditorText(formatted);
             lastAutoRendered = formatted; // 抑制随后自动格式化造成的重复重建
@@ -1811,7 +1816,10 @@
                         EditorView.updateListener.of(function(update) {
                             if (update.docChanged) {
                                 errorLine = -1;
-                                scheduleAutoFormat();
+                                if (isPasting) {
+                                    isPasting = false;
+                                    scheduleAutoFormat();
+                                }
                                 scheduleHistoryRecord();
                             }
                         }),
@@ -1833,6 +1841,9 @@
             document.getElementById('lineNumbers').classList.add('hidden');
             document.getElementById('searchBar').style.display = 'none';
             cmContainer.classList.remove('hidden');
+
+            // CodeMirror paste listener
+            cmEditor.dom.addEventListener('paste', function() { isPasting = true; });
 
         }).catch(function(e) {
             // 静默降级
